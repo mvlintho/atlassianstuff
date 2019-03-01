@@ -1,0 +1,206 @@
+(function($) {
+  // !!!!! Check Target Issue Type ID !!!!!
+  //@scarlet, 1 = Bug
+  var targetIssueTypeId = 1
+  var verbose = true
+
+  var host = window.location.host;
+  var prot = window.location.protocol;
+  var jiraBaseUrl = AJS.params.baseURL;
+  var jiraRestUrl = jiraBaseUrl + "/rest/api/2/";
+  var jql = /jql=([^&]+)/.exec(window.location.search)[1] || '';
+  if (!jql) {
+    console.error("Unable to get JQL string, exiting")
+    return
+  }
+  if (verbose) { console.debug("JQL String: " + jql); }
+  
+  function getCookie(cname) {
+    var name = cname + "=";
+    var ca = document.cookie.split(';');
+    for(var i=0; i<ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0)==' ') c = c.substring(1);
+        if (c.indexOf(name) == 0) return c.substring(name.length, c.length);
+    }
+    return "";
+  }
+  
+  var token = encodeURI(getCookie('atlassian.xsrf.token'))
+  if (verbose) { console.debug('XSRF Token: ' + token) }
+  
+  function loadSubIssues() {
+      var query = jiraRestUrl + "search?jql=" + jql + "&fields=key"
+      
+      var subissues;
+      $.ajax ({
+        url: query,
+        dataType: "json",
+        async: false,
+        
+        success: function(data, status, req) {
+          subissues = data.issues;
+        },
+        
+        error: function(req, status, err) {
+            console.error("Failed to load subissues: " + error)
+        }
+      });
+      return subissues
+  }
+  
+  function changeSubIssue(issueId) {
+  
+    var guid = 0;
+    var stepOneFailed = false
+    var stepTwoFailed = false
+    var stepThreeFailed = false
+    
+    var stepOneUrl = jiraBaseUrl + "/secure/ConvertSubTask.jspa?id=" + issueId
+    
+    
+    if (verbose) { console.debug("Step 1 Url: " + stepOneUrl) }
+    
+    // Step 1
+    $.ajax({
+      url: stepOneUrl,
+      async: false,
+      
+      success: function(data, status, req) {
+        if (req.status != 200) {
+          console.error("1. Step failed") 
+          stepOneFailed = true
+          return
+        } else {
+          var selectedGuid = $(data).find('#guid')
+          if (selectedGuid.length == 1) {
+            guid = selectedGuid[0].value
+          } else {
+            console.error("Bad selected GUID: " + selectedGuid)
+            stepOneFailed = true
+            return
+          }
+          console.log("1. Step OK")
+        }
+      },
+      
+      error: function(req, status, err) {
+        console.error("Error! Status: " + status + "; Error: " + err)
+        stepOneFailed = true
+        return
+      }
+    });
+  
+    if (stepOneFailed) {
+      return;
+    }
+    
+    var stepTwoUrl = jiraBaseUrl + "/secure/ConvertSubTaskSetIssueType.jspa"
+    var stepTwoData = 'issuetype=' + targetIssueTypeId + '&id=' + issueId + '&guid=' + guid + '&atl_token=' + token
+    
+    if (verbose) { console.debug("Step 2 Url: " + stepTwoUrl) }
+    if (verbose) { console.debug("Step 2 Data: " + stepTwoData) }
+    
+    // Step 2
+    $.ajax({
+      url: stepTwoUrl,
+      async: false,
+      data: stepTwoData,
+      
+      success: function(data, status, req) {
+        if (req.status != 200) {
+          console.error('2. Step failed');
+          stepTwoFailed = true
+          return
+        } else {
+          console.log('2. Step OK')
+        }
+      },
+      
+      error: function(req, status, err) {
+        console.error("Error! Status: " + status + "; Error: " + err)
+        stepTwoFailed = true
+        return
+      }
+    });
+    if (stepTwoFailed) {
+      return;
+    }
+    
+    var stepThreeUrl = jiraBaseUrl + "/secure/ConvertSubTaskUpdateFields.jspa"
+    var stepThreeData = 'id=' + issueId + '&guid=' + guid + '&atl_token=' + token
+    
+    if (verbose) { console.debug("Step 3 Url: " + stepThreeUrl) }
+    if (verbose) { console.debug("Step 3 Data: " + stepThreeData) }
+    
+    // Step 3
+    $.ajax({
+      url: stepThreeUrl,
+      async: false,
+      type: 'POST',
+      data: stepThreeData,
+      
+      success: function(data, status, req) {
+        if(req.status != 200) {
+          console.error('3. Step failed');
+          stepThreeFailed = true
+          return;
+        } else {
+          console.log('3. Step OK');
+        }
+      },
+
+      error: function(req, status, err) {
+        console.error("Error! Status: " + status + "; Error: " + err)
+        stepThreeFailed = true
+        return
+      }
+    });
+    
+    if (stepThreeFailed) {
+      return
+    }
+    
+    var stepFourUrl = jiraBaseUrl + "/secure/ConvertSubTaskConvert.jspa"
+    var stepFourData = 'id=' + issueId + '&guid=' + guid + '&atl_token=' + token
+    
+    if (verbose) { console.debug("Step 4 Url: " + stepFourUrl) }
+    if (verbose) { console.debug("Step 4 Data: " + stepFourData) }
+    
+    //Step 4
+    $.ajax({
+        url: stepFourUrl,
+        async: false,
+        type: 'POST',
+        data: stepFourData,
+        
+        success: function(data, status, req) {
+            if(req.status != 200) {
+                console.error('4. Step failed');
+                return;
+            } else {
+                console.log('4. Step OK');
+            }
+        },
+
+        error: function(req, status, err) {
+            console.error("Error! Status: " + status + "; Error: " + err)
+            return;
+        }
+    });
+  }
+  
+  var subissues = loadSubIssues();
+  if (!subissues || subissues.length == 0) {
+    console.log("No subissues found, exiting.")
+    return
+  }
+  console.log("Found subissues: " + subissues.length)
+  
+  for (var subissue in subissues) {
+        console.log(subissues[subissue].key + ' (id=' + subissues[subissue].id + '): ');
+        //Activate this line for real changing the subissues.
+        //changeSubIssue(subissues[subissue].id);
+    }
+  
+})(AJS.$);
