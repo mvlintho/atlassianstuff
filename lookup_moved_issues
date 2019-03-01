@@ -1,0 +1,36 @@
+package eventim.scripts
+
+import com.atlassian.jira.bc.issue.search.SearchService
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.web.bean.PagerFilter
+
+jqlQuery = 'project = BBB'
+fromProject = 'AAA'
+result = ''
+
+def changeHistoryManager = ComponentAccessor.getChangeHistoryManager()
+
+getFilterResult(jqlQuery,log).each{ Issue issue ->
+    oldKeys = changeHistoryManager.getPreviousIssueKeys(issue.id)
+    oldKeys.findAll{it==~/$fromProject.*/}.each{
+        result += "$it -> ${issue.key}\n"
+    }
+}
+
+return result
+
+List<Issue> getFilterResult(String jqlSearch, log) {
+    def searchService = ComponentAccessor.getComponent(SearchService.class);
+    def user = ComponentAccessor.jiraAuthenticationContext.getLoggedInUser()
+    List<Issue> issues = null
+
+    def parseResult =  searchService.parseQuery(user, jqlSearch);
+    if (parseResult.isValid()) {
+        def searchResult = searchService.search(user, parseResult.getQuery(), PagerFilter.getUnlimitedFilter())
+        issues = searchResult.issues
+    } else {
+        log.error("Invalid JQL: " + jqlSearch);
+    }
+    return issues
+}
