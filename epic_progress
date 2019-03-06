@@ -1,0 +1,36 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.issue.link.IssueLinkManager
+import com.atlassian.jira.issue.link.IssueLinkType
+import com.atlassian.jira.issue.link.IssueLinkTypeManager
+
+Issue issue = issue
+IssueLinkTypeManager issueLinkTypeManager = ComponentAccessor.getComponent(IssueLinkTypeManager)
+IssueLinkManager issueLinkManager = ComponentAccessor.issueLinkManager
+Collection;IssueLinkType; storyLinkTypes = issueLinkTypeManager.getIssueLinkTypesByName('Epic-Story Link')
+
+if (issue.issueTypeObject.name == "Epic"){
+    if (storyLinkTypes) {
+        Long storyLinkTypeId = storyLinkTypes[0].id
+        def linkedStories = issueLinkManager.getOutwardLinks(issue.id).findAll{it.linkTypeId==storyLinkTypeId}*.destinationObject
+     
+        double numStories = linkedStories?.size()?:0
+        if (numStories) {
+            double numClosedStories = linkedStories?.count{it?.statusObject?.name=='Closed'}?:0
+            double percentcomplete = (numClosedStories/numStories)*100
+            return percentcomplete.round(2) as double
+        } else {
+            return 0 as double
+        }
+    }
+    
+} else{
+    double numSubtasks = issue.getSubTaskObjects()?.size()?:0
+    if (numSubtasks) {
+        double numClosedSubtasks = issue.getSubTaskObjects()?.count{it?.statusObject?.name=='Closed'}?:0
+        double percentcomplete = (numClosedSubtasks/numSubtasks)*100
+        return percentcomplete.round(2) as double
+    } else {
+        return 0 as double
+    }
+}
